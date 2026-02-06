@@ -1,0 +1,12 @@
+# Arquivo de configuração com credenciais
+config.js
+
+# Arquivos do sistema
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo

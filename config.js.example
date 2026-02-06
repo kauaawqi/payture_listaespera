@@ -1,0 +1,5 @@
+// Configuração do Supabase
+// Copie este arquivo para config.js e preencha com suas credenciais
+// Substitua estas variáveis pelas suas credenciais do Supabase
+const SUPABASE_URL = 'SUA_URL_DO_SUPABASE';
+const SUPABASE_ANON_KEY = 'SUA_CHAVE_ANON_DO_SUPABASE';
