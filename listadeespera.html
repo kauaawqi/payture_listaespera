@@ -558,7 +558,7 @@
 
         <section class="stats">
             <div class="stat">
-                <div class="stat-number">0</div>
+                <div class="stat-number" id="waitlistCount">0</div>
                 <div class="stat-label">Na Lista de Espera</div>
             </div>
             <div class="stat">
@@ -726,7 +726,12 @@
         function initOnLoad() {
             // Aguardar um pouco para dar tempo do config.js carregar (se existir)
             setTimeout(() => {
-                if (!initializeSupabase()) {
+                if (initializeSupabase()) {
+                    // Se inicializou com sucesso, inicializar o contador
+                    setTimeout(() => {
+                        initializeCounter();
+                    }, 300);
+                } else {
                     const formMessage = document.getElementById('formMessage');
                     if (formMessage) {
                         formMessage.textContent = 'Erro de configuração. Verifique o console.';
@@ -742,26 +747,31 @@
             initOnLoad();
         }
         
-        // Testar conexão com Supabase
-        console.log('Supabase inicializado:', {
-            url: SUPABASE_URL,
-            keyLength: SUPABASE_ANON_KEY ? SUPABASE_ANON_KEY.length : 0
-        });
-        
-        const statNumber = document.querySelector('.stat-number');
-        
-        // Função para buscar o número real de emails na lista
+        // Função para buscar o número real de registros na lista
         async function fetchWaitlistCount() {
+            if (!supabaseClient) {
+                console.warn('Supabase não está inicializado ainda, aguardando...');
+                return 0;
+            }
+            
             try {
+                console.log('Buscando contagem de registros...');
                 const { count, error } = await supabaseClient
                     .from('waitlist')
                     .select('*', { count: 'exact', head: true });
                 
                 if (error) {
                     console.error('Erro ao buscar contagem:', error);
+                    console.error('Detalhes do erro:', {
+                        code: error.code,
+                        message: error.message,
+                        details: error.details,
+                        hint: error.hint
+                    });
                     return 0;
                 }
                 
+                console.log('Contagem encontrada:', count);
                 return count || 0;
             } catch (error) {
                 console.error('Erro ao buscar contagem:', error);
@@ -771,9 +781,29 @@
         
         // Função para animar o contador até o número real
         const animateCounter = async () => {
+            const statNumber = document.getElementById('waitlistCount');
+            if (!statNumber) {
+                console.error('Elemento waitlistCount não encontrado!');
+                return;
+            }
+            
             const targetCount = await fetchWaitlistCount();
+            console.log('Animando contador até:', targetCount);
+            
+            if (targetCount === 0) {
+                // Se não conseguiu buscar, tentar novamente após 1 segundo
+                setTimeout(() => {
+                    fetchWaitlistCount().then(count => {
+                        if (count > 0) {
+                            statNumber.textContent = count;
+                        }
+                    });
+                }, 1000);
+                return;
+            }
+            
             let count = 0;
-            const increment = targetCount / 60;
+            const increment = Math.max(1, targetCount / 60);
             
             const timer = setInterval(() => {
                 count += increment;
@@ -785,17 +815,53 @@
             }, 30);
         };
 
-        // Start counter animation when in view
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    animateCounter();
-                    observer.unobserve(entry.target);
-                }
+        // Função para inicializar o contador após Supabase estar pronto
+        function initializeCounter() {
+            const statNumber = document.getElementById('waitlistCount');
+            if (!statNumber) {
+                console.error('Elemento waitlistCount não encontrado!');
+                return;
+            }
+            
+            // Start counter animation when in view
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        animateCounter();
+                        observer.unobserve(entry.target);
+                    }
+                });
             });
-        });
 
-        observer.observe(document.querySelector('.stats'));
+            const statsSection = document.querySelector('.stats');
+            if (statsSection) {
+                observer.observe(statsSection);
+            } else {
+                // Se a seção já está visível, executar imediatamente
+                animateCounter();
+            }
+        }
+        
+        // Função já será chamada pelo initOnLoad quando Supabase estiver pronto
+        // Esta função serve como fallback caso o initOnLoad não funcione
+        function waitForSupabaseAndInitCounter() {
+            if (supabaseClient) {
+                console.log('Supabase inicializado (fallback), inicializando contador...');
+                initializeCounter();
+            } else {
+                // Tentar novamente após 500ms
+                setTimeout(waitForSupabaseAndInitCounter, 500);
+            }
+        }
+        
+        // Fallback: inicializar contador após 2 segundos se ainda não foi inicializado
+        setTimeout(() => {
+            const statNumber = document.getElementById('waitlistCount');
+            if (statNumber && statNumber.textContent === '0') {
+                console.log('Fallback: tentando inicializar contador...');
+                waitForSupabaseAndInitCounter();
+            }
+        }, 2000);
 
         // Form submission
         const form = document.getElementById('waitlistForm');
@@ -921,8 +987,11 @@
                 whatsappInput.value = '';
                 
                 // Atualizar contador
-                const newCount = await fetchWaitlistCount();
-                statNumber.textContent = newCount;
+                const statNumber = document.getElementById('waitlistCount');
+                if (statNumber) {
+                    const newCount = await fetchWaitlistCount();
+                    statNumber.textContent = newCount;
+                }
                 
                 // Redirecionar para página de sucesso após 2 segundos
                 setTimeout(() => {
