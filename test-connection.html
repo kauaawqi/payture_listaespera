@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste de Conexão - Supabase</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        .test-result {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success {
+            background: #00ff41;
+            color: #000;
+        }
+        .error {
+            background: #ff4444;
+            color: #fff;
+        }
+        .warning {
+            background: #ffaa00;
+            color: #000;
+        }
+        .info {
+            background: #00f0ff;
+            color: #000;
+        }
+        button {
+            padding: 10px 20px;
+            background: #00ff41;
+            color: #000;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #00cc33;
+        }
+        pre {
+            background: #2a2a2a;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Teste de Conexão com Supabase</h1>
+    
+    <div id="results"></div>
+    
+    <button onclick="testConnection()">Testar Conexão</button>
+    <button onclick="testInsert()">Testar Inserção</button>
+    <button onclick="testSelect()">Testar Leitura</button>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="config.js"></script>
+    
+    <script>
+        const resultsDiv = document.getElementById('results');
+        
+        function addResult(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `test-result ${type}`;
+            div.innerHTML = message;
+            resultsDiv.appendChild(div);
+        }
+        
+        function clearResults() {
+            resultsDiv.innerHTML = '';
+        }
+        
+        function testConnection() {
+            clearResults();
+            
+            addResult('🔍 Iniciando teste de conexão...', 'info');
+            
+            // Verificar se variáveis estão definidas
+            if (typeof SUPABASE_URL === 'undefined') {
+                addResult('❌ ERRO: SUPABASE_URL não está definido!', 'error');
+                return;
+            }
+            
+            if (typeof SUPABASE_ANON_KEY === 'undefined') {
+                addResult('❌ ERRO: SUPABASE_ANON_KEY não está definido!', 'error');
+                return;
+            }
+            
+            addResult(`✅ SUPABASE_URL: ${SUPABASE_URL}`, 'success');
+            addResult(`✅ SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY.substring(0, 20)}... (${SUPABASE_ANON_KEY.length} caracteres)`, 'info');
+            
+            // Verificar formato
+            if (!SUPABASE_URL.startsWith('https://')) {
+                addResult('⚠️ AVISO: URL não começa com https://', 'warning');
+            }
+            
+            if (!SUPABASE_URL.includes('.supabase.co')) {
+                addResult('⚠️ AVISO: URL não parece ser do Supabase', 'warning');
+            }
+            
+            if (SUPABASE_ANON_KEY.length < 50) {
+                addResult('⚠️ AVISO: Chave muito curta. Chaves anônimas geralmente têm mais de 100 caracteres.', 'warning');
+                addResult('💡 DICA: Verifique se você está usando a chave "anon/public" e não "publishable"', 'warning');
+            }
+            
+            // Tentar inicializar
+            try {
+                const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                addResult('✅ Cliente Supabase inicializado com sucesso!', 'success');
+                
+                // Testar conexão real
+                client.from('waitlist')
+                    .select('count', { count: 'exact', head: true })
+                    .then(({ count, error }) => {
+                        if (error) {
+                            addResult(`❌ ERRO ao conectar: ${error.message}`, 'error');
+                            addResult(`Código: ${error.code}`, 'error');
+                            if (error.hint) {
+                                addResult(`Dica: ${error.hint}`, 'warning');
+                            }
+                        } else {
+                            addResult(`✅ Conexão OK! Total de registros: ${count}`, 'success');
+                        }
+                    });
+            } catch (error) {
+                addResult(`❌ ERRO ao inicializar: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testInsert() {
+            clearResults();
+            addResult('🔍 Testando inserção de dados...', 'info');
+            
+            try {
+                const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                
+                const testData = {
+                    nome: 'Teste',
+                    email: `teste_${Date.now()}@teste.com`,
+                    whatsapp: '(11) 99999-9999'
+                };
+                
+                addResult(`📤 Enviando: ${JSON.stringify(testData, null, 2)}`, 'info');
+                
+                const { data, error } = await client
+                    .from('waitlist')
+                    .insert([testData])
+                    .select();
+                
+                if (error) {
+                    addResult(`❌ ERRO na inserção: ${error.message}`, 'error');
+                    addResult(`Código: ${error.code}`, 'error');
+                    addResult(`Detalhes: ${JSON.stringify(error, null, 2)}`, 'error');
+                    
+                    if (error.code === 'PGRST301' || error.message.includes('permission')) {
+                        addResult('💡 DICA: Verifique as políticas RLS no Supabase', 'warning');
+                    }
+                } else {
+                    addResult('✅ Dados inseridos com sucesso!', 'success');
+                    addResult(`📊 Resposta: ${JSON.stringify(data, null, 2)}`, 'success');
+                }
+            } catch (error) {
+                addResult(`❌ ERRO: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testSelect() {
+            clearResults();
+            addResult('🔍 Testando leitura de dados...', 'info');
+            
+            try {
+                const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                
+                const { data, error, count } = await client
+                    .from('waitlist')
+                    .select('*', { count: 'exact' })
+                    .limit(5);
+                
+                if (error) {
+                    addResult(`❌ ERRO na leitura: ${error.message}`, 'error');
+                    addResult(`Código: ${error.code}`, 'error');
+                } else {
+                    addResult(`✅ Leitura OK! Total: ${count} registros`, 'success');
+                    if (data && data.length > 0) {
+                        addResult(`📊 Primeiros registros: ${JSON.stringify(data, null, 2)}`, 'info');
+                    }
+                }
+            } catch (error) {
+                addResult(`❌ ERRO: ${error.message}`, 'error');
+            }
+        }
+        
+        // Executar teste automático ao carregar
+        window.addEventListener('load', () => {
+            setTimeout(testConnection, 500);
+        });
+    </script>
+</body>
+</html>
